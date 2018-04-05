@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+   <meta name="description" content="">
+   <meta name="author" content="">
+   <link rel="icon" href="favicon.ico">
+
+   <title>IoT dashboard</title>
+
+   <!-- Bootstrap core CSS -->
+   <link href="bootstrap.min.css" rel="stylesheet">
+
+   <!-- Custom styles for this template -->
+   <link href="dashboard.css" rel="stylesheet">
+</head>
+
+<body>
+   <nav class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0">
+      <a class="navbar-brand col-sm-3 col-md-2 mr-0" href="#">IoT dashboard</a>
+   </nav>
+
+   <div class="container-fluid">
+      <div class="row">
+         <nav class="col-md-1 d-none d-md-block bg-light sidebar">
+            <div class="sidebar-sticky">
+               <ul class="nav flex-column">
+                  <li class="nav-item">
+                     <a class="nav-link active" href="/dashboard">
+                        <span data-feather="home"></span>Dashboard</a>
+                  </li>
+               </ul>
+            </div>
+         </nav>
+
+         <main role="main" class="col-md-11 ml-sm-auto col-lg-11 pt-3 px-4">
+            <form>
+               <div class="row input-group">
+                  <div class="col-md-3 mb-1">
+                     <button type="button" action-button="on" class="btn btn-success mqtt-buttons">On buzzer</button>
+                     <button type="button" action-button="off" class="btn btn-success mqtt-buttons">Off buzzer</button>
+                  </div>
+               </div>
+            </form>
+         </main>
+
+      </div>
+   </div>
+
+   <!-- Bootstrap core JavaScript
+    ================================================== -->
+   <!-- Placed at the end of the document so the pages load faster -->
+   <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+      crossorigin="anonymous"></script>
+   <script src="popper.min.js"></script>
+   <script src="bootstrap.min.js"></script>
+
+   <script>
+      var button_xhr = new XMLHttpRequest();
+      var last_button_object;
+
+      function mqtt_result() {
+         if (button_xhr.readyState == 4) {
+            if (button_xhr.status == 200) {
+               var json_data = JSON.parse(button_xhr.responseText);
+               console.log(json_data, button_xhr.responseText)
+               if (json_data.mqtt_result == true)
+                  last_button_object.removeClass("btn-warning").removeClass("btn-danger").addClass("btn-success");
+               else
+                  last_button_object.removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger");
+            }
+            else {
+               last_button_object.removeClass("btn-warning").removeClass("btn-success").addClass("btn-danger");
+            }
+         }
+      }
+
+      function send_to_mqtt() {
+         button_xhr.open('POST', 'action?type=mqtt_send&action=' + $(this).attr('action-button'), true);
+         button_xhr.send()
+         last_button_object = $(this)
+         $(this).removeClass("btn-success").removeClass("btn-danger").addClass("btn-warning");
+      }
+
+      $('.mqtt-buttons').on('click', send_to_mqtt);
+      button_xhr.onreadystatechange = mqtt_result
+
+
+   </script>
+
+
+</body>
+
+</html>
+<!-- vvzvlad@gmail.com, Nokia IoT Lab, 2018 -->
