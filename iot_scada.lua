@@ -3,12 +3,14 @@ local mqtt = require 'mqtt'
 local fiber = require 'fiber'
 
 local config = {}
-config.MQTT_WIRENBOARD_HOST = "192.168.1.59"
+config.MQTT_WIRENBOARD_HOST = "192.168.1.111"
 config.MQTT_WIRENBOARD_PORT = 1883
 config.MQTT_WIRENBOARD_ID = "tarantool_iot_scada"
 config.HTTP_PORT = 8080
 
 io.stdout:setvbuf("no")
+
+local sensor_values = {}
 
 local function play_star_wars()
    local function play()
@@ -46,8 +48,39 @@ local function http_server_action_handler(req)
    end
 end
 
+
+local function http_server_data_handler(req)
+   local type_param = req:param("type")
+
+   if (type_param ~= nil) then
+      if (type_param == "temperature") then
+         if (sensor_values ~= nil) then
+            local temperature_data_object, i = {}, 0
+
+            for key, value in pairs(sensor_values) do
+               i = i + 1
+               temperature_data_object[i] = {}
+               temperature_data_object[i].sensor = key
+               temperature_data_object[i].temperature = value
+            end
+            return req:render{ json = { temperature_data_object } }
+         end
+      end
+   end
+   return req:render{ json = { none_data = "true" } }
+end
+
 local function http_server_root_handler(req)
    return req:redirect_to('/dashboard')
+end
+
+
+local function mqtt_callback(message_id, topic, payload, gos, retain)
+   local topic_pattern = "/devices/wb%-w1/controls/(%S+)"
+   local _, _, sensor_address = string.find(topic, topic_pattern)
+   if (sensor_address ~= nil) then
+      sensor_values[sensor_address] = tonumber(payload)
+   end
 end
 
 --//-----------------------------------------------------------------------//--
@@ -59,9 +92,13 @@ if (mqtt_ok ~= true) then
    os.exit()
 end
 
+mqtt.wb:on_message(mqtt_callback)
+mqtt.wb:subscribe('/devices/wb-w1/controls/+', 0)
+
 local http_server = require('http.server').new(nil, config.HTTP_PORT, {charset = "application/json"})
 
 http_server:route({ path = '/action' }, http_server_action_handler)
+http_server:route({ path = '/data' }, http_server_data_handler)
 http_server:route({ path = '/' }, http_server_root_handler)
 http_server:route({ path = '/dashboard', file = 'dashboard.html' })
 
