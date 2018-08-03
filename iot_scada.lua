@@ -49,6 +49,7 @@ local function http_server_action_handler(req)
 end
 
 
+
 local function http_server_data_handler(req)
    local type_param = req:param("type")
 
@@ -70,36 +71,44 @@ local function http_server_data_handler(req)
    return req:render{ json = { none_data = "true" } }
 end
 
-local function http_server_root_handler(req)
-   return req:redirect_to('/dashboard')
+
+
+
+local function http_init()
+   local http_server = require('http.server').new(nil, config.HTTP_PORT, {charset = "application/json"})
+   http_server:route({ path = '/action' }, http_server_action_handler)
+   http_server:route({ path = '/data' }, http_server_data_handler)
+   http_server:route({ path = '/' }, function(req) return req:redirect_to('/dashboard') end)
+   http_server:route({ path = '/dashboard', file = 'dashboard.html' })
+   http_server:start()
 end
 
-
-local function mqtt_callback(message_id, topic, payload, gos, retain)
-   local topic_pattern = "/devices/wb%-w1/controls/(%S+)"
-   local _, _, sensor_address = string.find(topic, topic_pattern)
-   if (sensor_address ~= nil) then
-      sensor_values[sensor_address] = tonumber(payload)
+local function mqtt_init()
+   local function mqtt_callback(message_id, topic, payload, gos, retain)
+      local topic_pattern = "/devices/wb%-w1/controls/(%S+)"
+      local _, _, sensor_address = string.find(topic, topic_pattern)
+      if (sensor_address ~= nil) then
+         sensor_values[sensor_address] = tonumber(payload)
+      end
    end
+
+   mqtt.wb = mqtt.new(config.MQTT_WIRENBOARD_ID, true)
+   local mqtt_ok, mqtt_err = mqtt.wb:connect({host=config.MQTT_WIRENBOARD_HOST,port=config.MQTT_WIRENBOARD_PORT,keepalive=60,log_mask=mqtt.LOG_ALL})
+   if (mqtt_ok ~= true) then
+      print ("Error mqtt: "..(mqtt_err or "No error"))
+      os.exit()
+   end
+
+   mqtt.wb:on_message(mqtt_callback)
+   mqtt.wb:subscribe('/devices/wb-w1/controls/+', 0)
+end
+
+local function database_init()
+
 end
 
 --//-----------------------------------------------------------------------//--
 
-mqtt.wb = mqtt.new(config.MQTT_WIRENBOARD_ID, true)
-local mqtt_ok, mqtt_err = mqtt.wb:connect({host=config.MQTT_WIRENBOARD_HOST,port=config.MQTT_WIRENBOARD_PORT,keepalive=60,log_mask=mqtt.LOG_ALL})
-if (mqtt_ok ~= true) then
-   print ("Error mqtt: "..(mqtt_err or "No error"))
-   os.exit()
-end
-
-mqtt.wb:on_message(mqtt_callback)
-mqtt.wb:subscribe('/devices/wb-w1/controls/+', 0)
-
-local http_server = require('http.server').new(nil, config.HTTP_PORT, {charset = "application/json"})
-
-http_server:route({ path = '/action' }, http_server_action_handler)
-http_server:route({ path = '/data' }, http_server_data_handler)
-http_server:route({ path = '/' }, http_server_root_handler)
-http_server:route({ path = '/dashboard', file = 'dashboard.html' })
-
-http_server:start()
+database_init()
+mqtt_init()
+http_init()
