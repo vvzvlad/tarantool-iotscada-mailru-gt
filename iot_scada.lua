@@ -11,6 +11,9 @@ config.HTTP_PORT = 8080
 io.stdout:setvbuf("no")
 
 local sensor_values = {}
+local box = box -- Fake define for disabling IDE warnings
+
+local storage
 
 local function play_star_wars()
    local function play()
@@ -48,31 +51,41 @@ local function http_server_action_handler(req)
    end
 end
 
+local function get_values()
+   local temperature_data_object, i = {}, 0
+   for _, tuple in storage:pairs() do
+      i = i + 1
+      local absolute_time_text = os.date("%Y-%m-%d, %H:%M:%S", tuple["timestamp"])
+      local relative_time_text = (os.time() - tuple["timestamp"]).."s ago"
 
+      temperature_data_object[i] = {}
+      temperature_data_object[i].sensor = tuple["serial"]
+      temperature_data_object[i].temperature = tuple["value"]
+      temperature_data_object[i].update_time_epoch = tuple["timestamp"]
+      temperature_data_object[i].update_time_text = absolute_time_text.." ("..relative_time_text..")"
+   end
+   return temperature_data_object
+end
+
+local function save_value(serial, value)
+   local timestamp = os.time()
+   value = tonumber(value)
+   if (value ~= nil and serial ~= nil) then
+      storage:upsert({serial, timestamp, value}, {{"=", 2, timestamp} , {"=", 3, value}})
+      return true
+   end
+   return false
+end
 
 local function http_server_data_handler(req)
    local type_param = req:param("type")
 
-   if (type_param ~= nil) then
-      if (type_param == "temperature") then
-         if (sensor_values ~= nil) then
-            local temperature_data_object, i = {}, 0
-
-            for key, value in pairs(sensor_values) do
-               i = i + 1
-               temperature_data_object[i] = {}
-               temperature_data_object[i].sensor = key
-               temperature_data_object[i].temperature = value
-            end
-            return req:render{ json = { temperature_data_object } }
-         end
-      end
+   if (type_param == "temperature") then
+      local values = get_values()
+      return req:render{ json = { values } }
    end
    return req:render{ json = { none_data = "true" } }
 end
-
-
-
 
 local function http_init()
    local http_server = require('http.server').new(nil, config.HTTP_PORT, {charset = "application/json"})
@@ -87,9 +100,8 @@ local function mqtt_init()
    local function mqtt_callback(message_id, topic, payload, gos, retain)
       local topic_pattern = "/devices/wb%-w1/controls/(%S+)"
       local _, _, sensor_address = string.find(topic, topic_pattern)
-      if (sensor_address ~= nil) then
-         sensor_values[sensor_address] = tonumber(payload)
-      end
+      local result = save_value(sensor_address, payload)
+      if (result ~= true) then print("Error save value to DB(address, payload):", sensor_address, payload) end
    end
 
    mqtt.wb = mqtt.new(config.MQTT_WIRENBOARD_ID, true)
@@ -104,7 +116,15 @@ local function mqtt_init()
 end
 
 local function database_init()
-
+   box.cfg { log_level = 4 }
+   box.schema.user.grant('guest', 'read,write,execute', 'universe', nil, {if_not_exists = true})
+   local format = {
+      {name='serial',      type='string'},   --1
+      {name='timestamp',   type='number'},   --2
+      {name='value',       type='number'},   --3
+   }
+   storage = box.schema.space.create('storage', {if_not_exists = true, format = format})
+   storage:create_index('serial', {parts = {'serial'}, if_not_exists = true})
 end
 
 --//-----------------------------------------------------------------------//--
@@ -112,3 +132,7 @@ end
 database_init()
 mqtt_init()
 http_init()
+
+if pcall(require('console').start) then -- Init console
+   os.exit(0)
+end

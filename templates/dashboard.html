@@ -144,9 +144,9 @@
             var json_data = JSON.parse(xhr_tmr.responseText);
             if (json_data.none_data != "true") {
                clear_table("table_values_temp")
-               add_row_table("table_values_temp", "head", ["Sensor serial", "Temperature"])
+               add_row_table("table_values_temp", "head", ["Sensor serial", "Temperature", "Update time"])
                for (let index = 0; index < json_data[0].length; index++) {
-                  add_row_table("table_values_temp", "body", [json_data[0][index].sensor, json_data[0][index].temperature])
+                  add_row_table("table_values_temp", "body", [json_data[0][index].sensor, json_data[0][index].temperature, json_data[0][index].update_time_text])
                }
             }
          }
