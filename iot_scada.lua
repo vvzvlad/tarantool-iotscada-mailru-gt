@@ -1,6 +1,7 @@
 #!/usr/bin/env tarantool
 local mqtt = require 'mqtt'
 local fiber = require 'fiber'
+local clock = require 'clock'
 
 local config = {}
 config.MQTT_WIRENBOARD_HOST = "192.168.1.111"
@@ -10,7 +11,6 @@ config.HTTP_PORT = 8080
 
 io.stdout:setvbuf("no")
 
-local sensor_values = {}
 local box = box -- Fake define for disabling IDE warnings
 
 local storage
@@ -51,39 +51,62 @@ local function http_server_action_handler(req)
    end
 end
 
-local function get_values()
+local function get_values_for_table(serial)
    local temperature_data_object, i = {}, 0
-   for _, tuple in storage:pairs() do
+   for _, tuple in storage.index.serial:pairs(serial) do
       i = i + 1
-      local absolute_time_text = os.date("%Y-%m-%d, %H:%M:%S", tuple["timestamp"])
-      local relative_time_text = (os.time() - tuple["timestamp"]).."s ago"
+      local time_in_sec = math.ceil(tuple["timestamp"]/10000)
+      local absolute_time_text = os.date("%Y-%m-%d, %H:%M:%S", time_in_sec)
 
       temperature_data_object[i] = {}
-      temperature_data_object[i].sensor = tuple["serial"]
+      temperature_data_object[i].serial = tuple["serial"]
       temperature_data_object[i].temperature = tuple["value"]
-      temperature_data_object[i].update_time_epoch = tuple["timestamp"]
-      temperature_data_object[i].update_time_text = absolute_time_text.." ("..relative_time_text..")"
+      temperature_data_object[i].time_epoch = tuple["timestamp"]
+      temperature_data_object[i].time_text = absolute_time_text
    end
    return temperature_data_object
 end
 
+local function get_values_for_graph(serial)
+   local temperature_data_object, i = {}, 1
+   temperature_data_object[1] = {"Time", "Value"}
+   for _, tuple in storage.index.serial:pairs(serial) do
+      i = i + 1
+      local time_in_sec = math.ceil(tuple["timestamp"]/10000)
+      temperature_data_object[i] = {os.date("%H:%M", time_in_sec), tuple["value"]}
+   end
+   return temperature_data_object
+end
+
+local function gen_id()
+   local new_id = clock.realtime()*10000
+   while storage.index.timestamp:get(new_id) do
+      new_id = new_id + 1
+   end
+   return new_id
+end
+
 local function save_value(serial, value)
-   local timestamp = os.time()
    value = tonumber(value)
    if (value ~= nil and serial ~= nil) then
-      storage:upsert({serial, timestamp, value}, {{"=", 2, timestamp} , {"=", 3, value}})
+      storage:insert({serial, gen_id(), value})
       return true
    end
    return false
 end
 
 local function http_server_data_handler(req)
-   local type_param = req:param("type")
+   local params = req:param()
 
-   if (type_param == "temperature") then
-      local values = get_values()
+   if (params["data"] == "table") then
+      local values = get_values_for_table(params["serial"])
+      return req:render{ json = { values } }
+   elseif (params["data"] == "graph") then
+      local values = get_values_for_graph(params["serial"])
       return req:render{ json = { values } }
    end
+
+
    return req:render{ json = { none_data = "true" } }
 end
 
@@ -124,8 +147,10 @@ local function database_init()
       {name='value',       type='number'},   --3
    }
    storage = box.schema.space.create('storage', {if_not_exists = true, format = format})
-   storage:create_index('serial', {parts = {'serial'}, if_not_exists = true})
+   storage:create_index('timestamp', {parts = {'timestamp'}, if_not_exists = true})
+   storage:create_index('serial', {parts = {'serial'}, unique = false, if_not_exists = true})
 end
+
 
 --//-----------------------------------------------------------------------//--
 

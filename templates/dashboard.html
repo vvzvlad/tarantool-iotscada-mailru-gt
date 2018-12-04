@@ -47,7 +47,8 @@
             </form>
 
             <br>
-            <h3>Sensors:</h3>
+            <h3>Sensor 28-000008e538e6:</h3>
+            <div id="chart_div" style="width: 100%; height: 300px;"></div>
             <div class="table-responsive">
                <table class="table table-striped table-sm" id="table_values_temp"></table>
             </div>
@@ -144,9 +145,9 @@
             var json_data = JSON.parse(xhr_tmr.responseText);
             if (json_data.none_data != "true") {
                clear_table("table_values_temp")
-               add_row_table("table_values_temp", "head", ["Sensor serial", "Temperature", "Update time"])
+               add_row_table("table_values_temp", "head", ["Time", "Temperature"])
                for (let index = 0; index < json_data[0].length; index++) {
-                  add_row_table("table_values_temp", "body", [json_data[0][index].sensor, json_data[0][index].temperature, json_data[0][index].update_time_text])
+                  add_row_table("table_values_temp", "body", [json_data[0][index].time_text, json_data[0][index].temperature])
                }
             }
          }
@@ -154,10 +155,41 @@
 
       function timer_update_field() {
          xhr_tmr.onreadystatechange = update_table_callback
-         xhr_tmr.open('POST', 'data?type=temperature', true);
+         xhr_tmr.open('POST', 'data?data=table&serial=28-000008e538e6', true);
          xhr_tmr.send()
       }
-      setInterval(timer_update_field, 1000);
+      setInterval(timer_update_field, 3000);
+
+   </script>
+
+
+   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+   <script type="text/javascript">
+      google.charts.load('current', { 'packages': ['corechart'] });
+      google.charts.setOnLoadCallback(timer_update_graph);
+
+
+      var xhr_graph = new XMLHttpRequest();
+
+      function update_graph_callback() {
+         let data_b = JSON.parse(xhr_graph.responseText);
+         var data = google.visualization.arrayToDataTable(data_b[0]);
+
+         var options = {
+            title: 'Temperatype',
+            hAxis: { title: 'Time', titleTextStyle: { color: '#333' } },
+         };
+
+         var chart = new google.visualization.AreaChart(document.getElementById('chart_div'));
+         chart.draw(data, options);
+      }
+
+      function timer_update_graph() {
+         xhr_graph.onreadystatechange = update_graph_callback
+         xhr_graph.open('POST', 'data?data=graph&serial=28-000008e538e6', true);
+         xhr_graph.send()
+         setTimeout(timer_update_graph, 3000);
+      }
 
    </script>
 
